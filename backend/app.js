@@ -12,9 +12,33 @@ import { notFound, errorHandler } from './middleware/errorHandler.js';
 
 const app = express();
 
+// CLIENT_URL may hold several comma-separated origins, e.g.
+//   CLIENT_URL=https://business-panel.vercel.app,http://localhost:5173
+const allowedOrigins = (process.env.CLIENT_URL || 'http://localhost:5173')
+  .split(',')
+  .map((value) => value.trim())
+  .filter(Boolean);
+
+// Vercel gives every preview deployment its own hostname, so those are matched
+// by pattern rather than being listed one by one. Set STRICT_CORS=true to turn
+// that off and accept only the exact origins named in CLIENT_URL.
+const previewOriginPattern = /^https:\/\/[a-z0-9-]+\.vercel\.app$/i;
+const strictCors = process.env.STRICT_CORS === 'true';
+
+const isAllowedOrigin = (origin) => {
+  if (allowedOrigins.includes(origin)) return true;
+  if (!strictCors && previewOriginPattern.test(origin)) return true;
+  return false;
+};
+
 app.use(
   cors({
-    origin: process.env.CLIENT_URL || 'https://businesspenal410.vercel.app/',
+    origin(origin, callback) {
+      // No Origin header: same-origin request, curl, Postman, health checks.
+      if (!origin) return callback(null, true);
+      if (isAllowedOrigin(origin)) return callback(null, true);
+      return callback(new Error(`Blocked by CORS: ${origin}`));
+    },
     credentials: true,
   })
 );
@@ -27,7 +51,12 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 app.get('/api/health', (req, res) => {
-  res.json({ success: true, message: 'Business Panel API is running', time: new Date() });
+  res.json({
+    success: true,
+    message: 'Business Panel API is running',
+    time: new Date(),
+    allowedOrigins,
+  });
 });
 
 app.use('/api/auth', authRoutes);
