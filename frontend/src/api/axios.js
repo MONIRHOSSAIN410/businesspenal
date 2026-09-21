@@ -1,13 +1,22 @@
 import axios from 'axios';
 
-// In production VITE_API_URL must be set in the Vercel project settings, e.g.
-//   VITE_API_URL=https://business-panel-api.vercel.app/api
-// If it is missing we fall back to a same-origin "/api" so the app can also run
-// behind a Vercel rewrite proxy instead of blowing up with a Network Error
-// against localhost. Locally the fallback is the dev backend on port 5011.
+// ---------------------------------------------------------------------------
+// API base URL
+// ---------------------------------------------------------------------------
+// Production builds read VITE_API_URL (see .env.production, or the Vercel
+// project's Environment Variables which override it).
+//
+// If it is missing we fall back to the same-origin "/api" path. On Vercel that
+// only works because frontend/vercel.json proxies /api/* to the backend BEFORE
+// the SPA catch-all rewrite. Without that proxy rule the catch-all sends
+// POST /api/auth/login to the static index.html, and Vercel answers
+// "405 Method Not Allowed" - which is exactly the login error this fixes.
 const fallbackBaseURL = import.meta.env.PROD ? '/api' : 'http://localhost:5011/api';
 
-export const API_BASE_URL = import.meta.env.VITE_API_URL || fallbackBaseURL;
+const rawBaseURL = import.meta.env.VITE_API_URL || fallbackBaseURL;
+
+// Trailing slashes produce "//auth/login" style URLs, which some hosts reject.
+export const API_BASE_URL = rawBaseURL.replace(/\/+$/, '');
 
 if (import.meta.env.PROD && !import.meta.env.VITE_API_URL) {
   console.warn(
@@ -17,6 +26,10 @@ if (import.meta.env.PROD && !import.meta.env.VITE_API_URL) {
 
 const api = axios.create({
   baseURL: API_BASE_URL,
+  // Render's free tier puts the service to sleep; the first request after that
+  // takes ~30-60s to wake it. Without a generous timeout that first login
+  // looks like a failure.
+  timeout: 120000,
 });
 
 api.interceptors.request.use((config) => {
@@ -42,12 +55,24 @@ api.interceptors.response.use(
 );
 
 export const getErrorMessage = (error) => {
+  const status = error?.response?.status;
+
   // A request that never reached the server has no `response` at all - that is
   // the classic "Network Error", and it is almost always a wrong API base URL
   // or a CORS rejection rather than a genuine credentials problem.
   if (!error?.response && error?.code !== 'ERR_CANCELED') {
+    if (error?.code === 'ECONNABORTED') {
+      return 'The server took too long to answer - it may be waking up. Please try again in a moment.';
+    }
     return `Cannot reach the API at ${API_BASE_URL} (network or CORS error).`;
   }
+
+  // 404/405 on an API call means the request landed on the static site instead
+  // of the backend, i.e. the API base URL / proxy rewrite is misconfigured.
+  if (status === 405 || (status === 404 && !error?.response?.data?.message)) {
+    return `API base URL looks wrong: ${API_BASE_URL} answered ${status}. Set VITE_API_URL to your backend's /api URL and redeploy.`;
+  }
+
   return error?.response?.data?.message || error?.message || 'Something went wrong';
 };
 
