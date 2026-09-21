@@ -142,7 +142,7 @@ export default function Sidebar({ mobileOpen, onCloseMobile }) {
   return (
     <>
       {/* Desktop / tablet sidebar */}
-      <aside className="hidden w-72 shrink-0 lg:block">{content}</aside>
+      <aside className="sticky top-0 hidden h-screen w-72 shrink-0 lg:block">{content}</aside>
 
       {/* Mobile drawer */}
       <AnimatePresence>

@@ -147,7 +147,7 @@ export default function DataTable({
       </div>
 
       {pages > 1 && (
-        <div className="flex items-center justify-between border-t border-slate-200 px-4 py-3 text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 px-4 py-3 text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
           <span>
             Page {page} of {pages} · {total} records
           </span>
